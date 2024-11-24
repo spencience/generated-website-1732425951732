@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Mystical Blade Quest</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/phaser/3.70.0/phaser.min.js"></script>
+<style>
+        body {
+            margin: 0;
+            background: #2a0a2a;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: 'Press Start 2P', system-ui;
+        }
+        #game-container {
+            box-shadow: 0 0 20px rgba(255,0,255,0.3);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+<div id="game-container"></div>
+<script>
+        const config = {
+            type: Phaser.AUTO,
+            width: 800,
+            height: 600,
+            backgroundColor: '#000',
+            parent: 'game-container',
+            pixelArt: true,
+            physics: {
+                default: 'arcade',
+                arcade: {
+                    gravity: { y: 300 },
+                    debug: false
+                }
+            },
+            scene: {
+                preload: preload,
+                create: create,
+                update: update
+            }
+        };
+
+        const game = new Phaser.Game(config);
+
+        let player;
+        let platforms;
+        let cursors;
+        let score = 0;
+        let gameOver = false;
+        let scoreText;
+        let crystals;
+        let sword;
+        let enemies;
+
+        function preload() {
+            // Generate pixel art programmatically
+            const graphics = this.add.graphics();
+            
+            // Create player texture
+            graphics.fillStyle(0x4444ff);
+            graphics.fillRect(0, 0, 32, 48);
+            graphics.generateTexture('player', 32, 48);
+            
+            // Create platform texture
+            graphics.clear();
+            graphics.fillStyle(0x00ff00);
+            graphics.fillRect(0, 0, 400, 32);
+            graphics.generateTexture('platform', 400, 32);
+            
+            // Create crystal texture
+            graphics.clear();
+            graphics.fillStyle(0xff00ff);
+            graphics.fillRect(0, 0, 16, 16);
+            graphics.generateTexture('crystal', 16, 16);
+            
+            // Create sword texture
+            graphics.clear();
+            graphics.lineStyle(2, 0xcccccc);
+            graphics.strokeRect(0, 0, 32, 8);
+            graphics.generateTexture('sword', 32, 8);
+            
+            // Create enemy texture
+            graphics.clear();
+            graphics.fillStyle(0xff0000);
+            graphics.fillRect(0, 0, 32, 32);
+            graphics.generateTexture('enemy', 32, 32);
+        }
+
+        function create() {
+            // Add platforms
+            platforms = this.physics.add.staticGroup();
+            platforms.create(400, 568, 'platform');
+            platforms.create(600, 400, 'platform');
+            platforms.create(50, 250, 'platform');
+            platforms.create(750, 220, 'platform');
+
+            // Player setup
+            player = this.physics.add.sprite(100, 450, 'player');
+            player.setBounce(0.2);
+            player.setCollideWorldBounds(true);
+            
+            // Sword setup
+            sword = this.physics.add.sprite(700, 100, 'sword');
+            sword.setBounce(0.2);
+            sword.setCollideWorldBounds(true);
+
+            // Crystals setup
+            crystals = this.physics.add.group({
+                key: 'crystal',
+                repeat: 11,
+                setXY: { x: 12, y: 0, stepX: 70 }
+            });
+
+            crystals.children.iterate(function (child) {
+                child.setBounceY(Phaser.Math.FloatBetween(0.4, 0.8));
+            });
+
+            // Enemies setup
+            enemies = this.physics.add.group();
+            createEnemy(this, 300, 100);
+            createEnemy(this, 500, 100);
+
+            // Colliders
+            this.physics.add.collider(player, platforms);
+            this.physics.add.collider(crystals, platforms);
+            this.physics.add.collider(sword, platforms);
+            this.physics.add.collider(enemies, platforms);
+
+            // Overlap callbacks
+            this.physics.add.overlap(player, crystals, collectCrystal, null, this);
+            this.physics.add.overlap(player, sword, collectSword, null, this);
+            this.physics.add.overlap(player, enemies, hitEnemy, null, this);
+
+            // Score
+            scoreText = this.add.text(16, 16, 'Score: 0', { fontSize: '32px', fill: '#fff' });
+
+            // Controls
+            cursors = this.input.keyboard.createCursorKeys();
+        }
+
+        function update() {
+            if (gameOver) {
+                return;
+            }
+
+            // Player movement
+            if (cursors.left.isDown) {
+                player.setVelocityX(-160);
+            } else if (cursors.right.isDown) {
+                player.setVelocityX(160);
+            } else {
+                player.setVelocityX(0);
+            }
+
+            if (cursors.up.isDown && player.body.touching.down) {
+                player.setVelocityY(-330);
+            }
+
+            // Enemy movement
+            enemies.children.iterate(function (enemy) {
+                if (enemy.body.touching.right || enemy.body.blocked.right) {
+                    enemy.setVelocityX(-100);
+                } else if (enemy.body.touching.left || enemy.body.blocked.left) {
+                    enemy.setVelocityX(100);
+                }
+            });
+        }
+
+        function collectCrystal(player, crystal) {
+            crystal.disableBody(true, true);
+            score += 10;
+            scoreText.setText('Score: ' + score);
+
+            if (crystals.countActive(true) === 0) {
+                crystals.children.iterate(function (child) {
+                    child.enableBody(true, child.x, 0, true, true);
+                });
+            }
+        }
+
+        function collectSword(player, sword) {
+            sword.disableBody(true, true);
+            score += 50;
+            scoreText.setText('Score: ' + score);
+            player.hasSword = true;
+        }
+
+        function hitEnemy(player, enemy) {
+            if (player.hasSword) {
+                enemy.disableBody(true, true);
+                score += 30;
+                scoreText.setText('Score: ' + score);
+            } else {
+                this.physics.pause();
+                player.setTint(0xff0000);
+                gameOver = true;
+            }
+        }
+
+        function createEnemy(scene, x, y) {
+            const enemy = enemies.create(x, y, 'enemy');
+            enemy.setBounce(0.2);
+            enemy.setCollideWorldBounds(true);
+            enemy.setVelocityX(100);
+            return enemy;
+        }
+    </script>
+</body>
+</html>
